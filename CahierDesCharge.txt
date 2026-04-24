@@ -1,0 +1,110 @@
+Cahier des charges MVP HabitQuest
+1. Contexte et objectif
+HabitQuest est une application de gamification orientée quêtes. Il permet de pousser les gens à faire des actions quotidiennes pour gagner de l'expérience dans le jeu afin d’augmenter le niveau de son profile
+Le MVP vise une boucle simple :
+
+l’utilisateur se connecte,
+reçoit des quêtes créées par les admins,
+valide ses quêtes,
+gagne de l’XP,
+voit les événements globaux en cours.
+
+Objectif du MVP : livrer une version simple, stable, compréhensible, sans surcomplexifier le gameplay.
+
+2. Périmètre fonctionnel MVP
+2.1 Authentification et rôles
+Inscription utilisateur.
+Connexion / déconnexion.
+Rôles :
+USER : consulte et valide ses quêtes.
+ADMIN : crée les quêtes et crée les événements.
+
+2.2 Gestion des quêtes (admin)
+Créer/modifier/activer/désactiver une QuestTemplate.
+Types de quêtes (QuestKind) :
+daily
+weekly
+progression
+event
+Champs minimum d’une quête :
+titre
+description
+type
+récompense XP
+
+2.3 Quêtes utilisateur
+Chaque utilisateur possède des UserQuest.
+Statuts (UserQuestStatus) :
+in_progress
+completed
+expired
+L’utilisateur peut valider une quête (MVP : validation simple, sans input de quantité).
+La validation met à jour la progression (règle MVP simplifiée).
+À complétion :
+attribution immédiate de la récompense
+mise à jour du statut completed.
+
+2.4 Événements (globaux)
+Un admin crée un Event (date début / date fin).
+Un event est lié à une ou plusieurs quêtes via EventQuestSelection.
+MVP : scope global uniquement (pas encore de groupe/famille).
+Le backend génère les UserQuest concernées à partir des quêtes sélectionnées.
+
+2.5 Notifications
+Conservation d’une entité Notification pour:
+informer sur les événements / changements importants,
+permettre un affichage même si l’utilisateur n’était pas connecté au moment exact.
+États minimum : créée / lue (readAt nullable).
+
+3. Hors périmètre MVP (explicitement exclu)
+Combat. ( sous forme de combat automatique lors de la complétion d’une quête )
+Monstres, loot, inventaire, stats force/intelligence, etc.
+Input de progression type “1/3, 2/3, 3/3”.
+Ciblage d’événements par groupe/famille.
+Paramétrage avancé d’event (boss/items/visual avancé).
+
+4. Règles métier MVP
+Seuls les admins peuvent créer/éditer quêtes et événements.
+Un utilisateur ne peut agir que sur ses propres UserQuest.
+Une quête completed ne peut pas être revalidée.
+Les quêtes expirées passent en expired.
+Les récompenses sont attribuées une seule fois par complétion.
+
+5. Exigences non fonctionnelles
+Sécurité : contrôle d’accès par rôle (USER / ADMIN).
+Performance : optimisation du chargement de la liste de quêtes utilisateur.
+Traçabilité : journaliser création event, création quêtes, validation et complétion.
+Fiabilité : éviter les doublons d’attribution de récompense.
+
+6. Parcours utilisateur MVP
+USER
+
+Je crée un compte / me connecte.
+Je vois mes quêtes en cours.
+Je valide une quête.
+Je vois la progression/statut mis à jour.
+Je reçois ma récompense XP.
+
+ADMIN
+
+Je crée une quête template.
+Je crée un événement global.
+Je sélectionne des quêtes dans l’événement.
+Je lance l’événement.
+Les quêtes deviennent disponibles pour les utilisateurs.
+
+7. Critères d’acceptation MVP
+Un user peut s’inscrire, se connecter, voir ses quêtes.
+Un admin peut créer une quête et elle peut être assignée via event.
+Un user peut valider une quête et obtenir la récompense.
+Le statut de quête passe correctement de in_progress à completed.
+Les notifications d’événement sont stockées et consultables.
+Un user non connecté pendant un event retrouve l’information à la reconnexion.
+
+8. Livrables MVP attendus
+API backend (auth, quêtes, événements, notifications, validation).
+Interface user (liste quêtes + action valider).
+Interface admin (CRUD quêtes + création events + sélection quêtes).
+Schéma BDD MVP aligné avec mon Diagram UML.
+Jeu minimal de tests fonctionnels (auth, permissions, validation, récompense).
+

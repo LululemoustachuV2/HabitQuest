@@ -1,0 +1,95 @@
+classDiagram
+  direction LR
+
+  class UserRole {
+    <<enumeration>>
+    USER
+    ADMIN
+  }
+
+  class QuestKind {
+    <<enumeration>>
+    daily
+    weekly
+    progression
+    event
+  }
+
+  class UserQuestStatus {
+    <<enumeration>>
+    in_progress
+    completed
+    expired
+  }
+
+  class User {
+    +int id
+    +string email
+    +string password
+    +int xp
+    +UserRole role
+  }
+
+  class QuestTemplate {
+    +int id
+    +QuestKind kind
+    +string title
+    +string description
+    +bool isActive
+    +int xpReward
+    +int requiredLevel
+  }
+
+  class UserQuest {
+    +int id
+    +int userId
+    +int questTemplateId
+    +int eventId
+    +UserQuestStatus status
+    +bool isValidated
+    +DateTime startedAt
+    +DateTime completedAt
+  }
+
+  class UserQuestActionLog {
+    +int id
+    +int userId
+    +int userQuestId
+    +string comment
+    +DateTime actionAt
+  }
+
+  class Event {
+    +int id
+    +int createdByUserId
+    +DateTime startsAt
+    +DateTime endsAt
+    +int xpReward
+  }
+
+  class EventQuestSelection {
+    +int eventId
+    +int questTemplateId
+  }
+
+  class Notification {
+    +int id
+    +int userId
+    +string title
+    +string body
+    +DateTime createdAt
+    +DateTime readAt
+  }
+
+  User "1" --> "0..*" UserQuest : has >
+  QuestTemplate "1" --> "0..*" UserQuest : instantiates >
+
+  User "1" --> "0..*" UserQuestActionLog : performs >
+  UserQuest "1" --> "0..*" UserQuestActionLog : logs >
+
+  Event "1" --> "0..*" EventQuestSelection : selects >
+  EventQuestSelection "0..*" --> "1" QuestTemplate
+
+  User "1" --> "0..*" Notification : receives >
+  User "1" --> "0..*" Event : creates >
+  Event "0..1" --> "0..*" UserQuest : scopes >

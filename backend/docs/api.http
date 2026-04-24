@@ -1,0 +1,54 @@
+### Register
+POST http://localhost:8000/api/auth/register
+Content-Type: application/json
+
+{
+  "email": "user1@habitquest.dev",
+  "password": "StrongPass123!"
+}
+
+### Login
+POST http://localhost:8000/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "user1@habitquest.dev",
+  "password": "StrongPass123!"
+}
+
+### List quests (replace token)
+GET http://localhost:8000/api/quests
+Authorization: Bearer {{token}}
+
+### Validate quest
+POST http://localhost:8000/api/quests/1/validate
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "comment": "Quete terminee"
+}
+
+### Admin create quest template
+POST http://localhost:8000/api/admin/quest-templates
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "kind": "daily",
+  "title": "10 min de lecture",
+  "description": "Lire 10 minutes minimum",
+  "xpReward": 50,
+  "isActive": true
+}
+
+### Admin create event
+POST http://localhost:8000/api/admin/events
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "startsAt": "2026-04-01T08:00:00+00:00",
+  "endsAt": "2026-04-08T08:00:00+00:00",
+  "questTemplateIds": [1, 2]
+}
