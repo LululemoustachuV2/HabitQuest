@@ -7,9 +7,6 @@ use App\Enum\QuestKind;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 
-/**
- * @extends ServiceEntityRepository<QuestTemplate>
- */
 class QuestTemplateRepository extends ServiceEntityRepository
 {
     public function __construct(ManagerRegistry $registry)
@@ -17,9 +14,6 @@ class QuestTemplateRepository extends ServiceEntityRepository
         parent::__construct($registry, QuestTemplate::class);
     }
 
-    /**
-     * @return QuestTemplate[]
-     */
     public function findActiveByKind(QuestKind $kind): array
     {
         return $this->createQueryBuilder('q')
@@ -31,9 +25,6 @@ class QuestTemplateRepository extends ServiceEntityRepository
             ->getResult();
     }
 
-    /**
-     * @return QuestTemplate[]
-     */
     public function findActiveStandard(): array
     {
         return $this->createQueryBuilder('q')
@@ -45,3 +36,4 @@ class QuestTemplateRepository extends ServiceEntityRepository
             ->getResult();
     }
 }
+

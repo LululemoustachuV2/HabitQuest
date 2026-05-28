@@ -1,3 +1,4 @@
+%% HabitQuest v2.0.0 — modèle de données
 classDiagram
   direction LR
 
@@ -22,12 +23,31 @@ classDiagram
     expired
   }
 
+  class AchievementCode {
+    <<enumeration>>
+    first_quest_validated
+    first_monster_kill
+    iron_discipline
+  }
+
   class User {
     +int id
     +string email
     +string password
     +int xp
+    +int gold
     +UserRole role
+    +int currentStreak
+    +int longestStreak
+    +string lastStreakDate
+  }
+
+  class Stat {
+    +int id
+    +int force
+    +int intelligence
+    +int discipline
+    +int creativity
   }
 
   class QuestTemplate {
@@ -37,34 +57,44 @@ classDiagram
     +string description
     +bool isActive
     +int xpReward
+    +int baseDamage
     +int requiredLevel
+  }
+
+  class QuestCondition {
+    +int id
+    +string kind
+    +json params
+  }
+
+  class QuestReward {
+    +int id
+    +int xp
+    +int gold
+    +json params
   }
 
   class UserQuest {
     +int id
-    +int userId
-    +int questTemplateId
-    +int eventId
     +UserQuestStatus status
     +bool isValidated
     +DateTime startedAt
     +DateTime completedAt
+    +json progress
   }
 
   class UserQuestActionLog {
     +int id
-    +int userId
-    +int userQuestId
     +string comment
     +DateTime actionAt
   }
 
   class Event {
     +int id
-    +int createdByUserId
     +DateTime startsAt
     +DateTime endsAt
     +int xpReward
+    +json bonusRules
   }
 
   class EventQuestSelection {
@@ -74,22 +104,117 @@ classDiagram
 
   class Notification {
     +int id
-    +int userId
     +string title
     +string body
     +DateTime createdAt
     +DateTime readAt
   }
 
-  User "1" --> "0..*" UserQuest : has >
-  QuestTemplate "1" --> "0..*" UserQuest : instantiates >
+  class Item {
+    +int id
+    +string name
+    +string rarity
+    +bool isSellable
+    +int shopPrice
+    +int bonusDamage
+    +int bonusDamagePercent
+  }
 
-  User "1" --> "0..*" UserQuestActionLog : performs >
-  UserQuest "1" --> "0..*" UserQuestActionLog : logs >
+  class Inventory {
+    +int id
+    +bool isEquipped
+    +int equipSlot
+  }
 
-  Event "1" --> "0..*" EventQuestSelection : selects >
+  class MonsterTemplate {
+    +int id
+    +string name
+    +int baseHp
+    +int bossLevel
+    +int levelMin
+    +int levelMax
+    +json lootTable
+  }
+
+  class MonsterSequenceStep {
+    +int stepOrder
+    +int monsterTemplateId
+  }
+
+  class UserMonster {
+    +int id
+    +int currentHp
+    +int bossLevel
+    +bool isActive
+  }
+
+  class Achievement {
+    +int id
+    +AchievementCode code
+    +string name
+    +string description
+  }
+
+  class UserAchievement {
+    +int id
+    +DateTime unlockedAt
+  }
+
+  class ShopPurchase {
+    +int id
+    +string rotationDate
+    +DateTime purchasedAt
+  }
+
+  class Category {
+    +int id
+    +string name
+    +string linkedStat
+  }
+
+  class Habit {
+    +int id
+    +string name
+    +int xpReward
+    +bool isActive
+  }
+
+  class HabitLog {
+    +int id
+    +int xpEarned
+    +int goldEarned
+    +DateTime loggedAt
+  }
+
+  User "1" --> "1" Stat : owns
+  User "1" --> "0..*" UserQuest : has
+  QuestTemplate "1" --> "0..*" UserQuest : instantiates
+  QuestTemplate "1" --> "0..*" QuestCondition : has
+  QuestTemplate "0..1" --> "1" QuestReward : reward
+
+  User "1" --> "0..*" UserQuestActionLog : performs
+  UserQuest "1" --> "0..*" UserQuestActionLog : logs
+
+  Event "1" --> "0..*" EventQuestSelection : selects
   EventQuestSelection "0..*" --> "1" QuestTemplate
+  Event "0..1" --> "0..*" UserQuest : scopes
 
-  User "1" --> "0..*" Notification : receives >
-  User "1" --> "0..*" Event : creates >
-  Event "0..1" --> "0..*" UserQuest : scopes >
+  User "1" --> "0..*" Notification : receives
+  User "1" --> "0..*" Event : creates
+
+  User "1" --> "0..*" Inventory : owns
+  Item "1" --> "0..*" Inventory : granted
+
+  MonsterTemplate "1" --> "0..*" MonsterSequenceStep : in sequence
+  MonsterTemplate "1" --> "0..*" UserMonster : spawns
+  User "1" --> "0..*" UserMonster : fights
+
+  User "1" --> "0..*" UserAchievement : unlocks
+  Achievement "1" --> "0..*" UserAchievement : catalog
+
+  User "1" --> "0..*" ShopPurchase : buys
+  Item "1" --> "0..*" ShopPurchase : purchased
+
+  Category "0..1" --> "0..*" Habit : classifies
+  User "1" --> "0..*" Habit : legacy
+  Habit "1" --> "0..*" HabitLog : logs

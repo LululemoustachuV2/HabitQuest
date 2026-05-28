@@ -32,6 +32,17 @@ class Event
     #[Assert\PositiveOrZero]
     private int $xpReward = 0;
 
+    #[ORM\Column(type: 'float', options: ['default' => 1.0])]
+    #[Assert\Positive]
+    private float $xpMultiplier = 1.0;
+
+    #[ORM\Column(type: 'float', options: ['default' => 1.0])]
+    #[Assert\Positive]
+    private float $goldMultiplier = 1.0;
+
+    #[ORM\Column(type: 'json', nullable: true)]
+    private ?array $bonusRules = null;
+
     public function getId(): ?int
     {
         return $this->id;
@@ -84,4 +95,41 @@ class Event
 
         return $this;
     }
+
+    public function getXpMultiplier(): float
+    {
+        return $this->xpMultiplier;
+    }
+
+    public function setXpMultiplier(float $xpMultiplier): self
+    {
+        $this->xpMultiplier = $xpMultiplier > 0 ? $xpMultiplier : 1.0;
+
+        return $this;
+    }
+
+    public function getGoldMultiplier(): float
+    {
+        return $this->goldMultiplier;
+    }
+
+    public function setGoldMultiplier(float $goldMultiplier): self
+    {
+        $this->goldMultiplier = $goldMultiplier > 0 ? $goldMultiplier : 1.0;
+
+        return $this;
+    }
+
+    public function getBonusRules(): ?array
+    {
+        return $this->bonusRules;
+    }
+
+    public function setBonusRules(?array $bonusRules): self
+    {
+        $this->bonusRules = $bonusRules;
+
+        return $this;
+    }
 }
+

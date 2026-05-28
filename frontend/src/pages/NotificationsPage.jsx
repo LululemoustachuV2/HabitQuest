@@ -1,8 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
+import NotificationFullscreenModal from "../components/NotificationFullscreenModal";
 import {
   fetchNotifications,
   markNotificationAsRead,
 } from "../services/notificationService";
+
+const SEVERITY_LABELS = {
+  info: "Info",
+  warning: "Attention",
+  urgent: "Urgent",
+};
 
 function formatReadAt(value) {
   if (!value) return "non lue";
@@ -15,13 +22,18 @@ export default function NotificationsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [fullscreenNotification, setFullscreenNotification] = useState(null);
 
   async function loadNotifications() {
     setLoading(true);
     setError("");
     try {
       const result = await fetchNotifications();
-      setNotifications(result.items || []);
+      const items = result.items || [];
+      setNotifications(items);
+
+      const nextFullscreen = items.find((item) => !item.readAt && item.isFullscreen);
+      setFullscreenNotification(nextFullscreen || null);
     } catch (err) {
       setError(err.payload?.message || err.message || "Erreur chargement notifications");
     } finally {
@@ -41,6 +53,13 @@ export default function NotificationsPage() {
     }
   }
 
+  function handleFullscreenDismiss(success) {
+    if (success) {
+      setMessage("Notification marquee lue");
+    }
+    loadNotifications();
+  }
+
   useEffect(() => {
     loadNotifications();
   }, []);
@@ -52,6 +71,13 @@ export default function NotificationsPage() {
 
   return (
     <section>
+      {fullscreenNotification && (
+        <NotificationFullscreenModal
+          notification={fullscreenNotification}
+          onDismiss={handleFullscreenDismiss}
+        />
+      )}
+
       <div className="page-header">
         <div>
           <h2>Notifications</h2>
@@ -96,13 +122,22 @@ export default function NotificationsPage() {
         <div className="notif-list">
           {notifications.map((notification) => {
             const isUnread = !notification.readAt;
+            const severity = notification.severity || "info";
             return (
               <article
                 key={notification.id}
-                className={`notif-card ${isUnread ? "notif-card--unread" : ""}`}
+                className={`notif-card notif-card--${severity} ${isUnread ? "notif-card--unread" : ""}`}
               >
                 <span className={`notif-dot ${isUnread ? "" : "notif-dot--read"}`} />
                 <div className="notif-body">
+                  <div className="notif-headline">
+                    <span className={`notif-severity notif-severity--${severity}`}>
+                      {SEVERITY_LABELS[severity] || "Info"}
+                    </span>
+                    {notification.isFullscreen && (
+                      <span className="notif-badge">Plein ecran</span>
+                    )}
+                  </div>
                   <h3 className="notif-title">
                     <span className="quest-card-id">#{notification.id}</span>
                     {notification.title}
@@ -110,13 +145,22 @@ export default function NotificationsPage() {
                   <p className="notif-text">{notification.body}</p>
                   <p className="notif-meta">Statut : {formatReadAt(notification.readAt)}</p>
                 </div>
-                {isUnread && (
+                {isUnread && !notification.isFullscreen && (
                   <button
                     type="button"
                     className="btn btn--sm btn--soft"
                     onClick={() => handleRead(notification.id)}
                   >
                     Marquer comme lue
+                  </button>
+                )}
+                {isUnread && notification.isFullscreen && (
+                  <button
+                    type="button"
+                    className="btn btn--sm"
+                    onClick={() => setFullscreenNotification(notification)}
+                  >
+                    Ouvrir
                   </button>
                 )}
               </article>
@@ -127,3 +171,4 @@ export default function NotificationsPage() {
     </section>
   );
 }
+

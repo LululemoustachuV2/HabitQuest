@@ -27,11 +27,9 @@ final class QuestTemplateDto
 
     public bool $isActive = true;
 
-    /**
-     * @return string[]
-     */
     public static function allowedKinds(): array
     {
         return array_map(static fn (QuestKind $kind): string => $kind->value, QuestKind::cases());
     }
 }
+

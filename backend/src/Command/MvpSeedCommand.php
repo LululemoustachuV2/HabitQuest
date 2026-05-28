@@ -84,3 +84,4 @@ final class MvpSeedCommand extends Command
         return Command::SUCCESS;
     }
 }
+

@@ -1,0 +1,21 @@
+# PMVP-031 — Rate limiting V1 (login + logs d'habitudes).
+framework:
+    rate_limiter:
+        login:
+            policy: sliding_window
+            limit: 5
+            interval: '15 minutes'
+        habit_log:
+            policy: sliding_window
+            limit: 30
+            interval: '1 minute'
+
+when@test:
+    framework:
+        rate_limiter:
+            login:
+                limit: 3
+                interval: '1 minute'
+            habit_log:
+                limit: 3
+                interval: '1 minute'

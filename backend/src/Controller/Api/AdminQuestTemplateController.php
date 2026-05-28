@@ -46,9 +46,16 @@ final class AdminQuestTemplateController extends AbstractController
             return $dto;
         }
 
-        $result = $this->questTemplateService->createTemplate($dto);
+        try {
+            $result = $this->questTemplateService->createTemplate($dto);
+        } catch (\Throwable $e) {
+            return $this->json([
+                'message' => 'Création du modèle impossible.',
+                'detail' => $e->getMessage(),
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
 
-        return $this->json($result, $result['statusCode']);
+        return $this->apiJson($result);
     }
 
     #[Route('/api/admin/quest-templates/{id}', name: 'api_admin_quest_template_update', methods: ['PUT'], requirements: ['id' => '\d+'])]
@@ -59,9 +66,16 @@ final class AdminQuestTemplateController extends AbstractController
             return $dto;
         }
 
-        $result = $this->questTemplateService->updateTemplate($id, $dto);
+        try {
+            $result = $this->questTemplateService->updateTemplate($id, $dto);
+        } catch (\Throwable $e) {
+            return $this->json([
+                'message' => 'Mise à jour du modèle impossible.',
+                'detail' => $e->getMessage(),
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
 
-        return $this->json($result, $result['statusCode']);
+        return $this->apiJson($result);
     }
 
     #[Route('/api/admin/quest-templates/{id}/active', name: 'api_admin_quest_template_active', methods: ['PATCH'], requirements: ['id' => '\d+'])]
@@ -77,7 +91,7 @@ final class AdminQuestTemplateController extends AbstractController
 
         $result = $this->questTemplateService->setTemplateActive($id, (bool) $payload['isActive']);
 
-        return $this->json($result, $result['statusCode']);
+        return $this->apiJson($result);
     }
 
     #[Route('/api/admin/quest-templates/{id}/delete-impact', name: 'api_admin_quest_template_delete_impact', methods: ['GET'], requirements: ['id' => '\d+'])]
@@ -85,7 +99,7 @@ final class AdminQuestTemplateController extends AbstractController
     {
         $result = $this->questTemplateService->getDeleteImpact($id);
 
-        return $this->json($result, $result['statusCode']);
+        return $this->apiJson($result);
     }
 
     #[Route('/api/admin/quest-templates/{id}', name: 'api_admin_quest_template_delete', methods: ['DELETE'], requirements: ['id' => '\d+'])]
@@ -93,14 +107,17 @@ final class AdminQuestTemplateController extends AbstractController
     {
         $result = $this->questTemplateService->deleteTemplateAndLinkedEvents($id);
 
-        return $this->json($result, $result['statusCode']);
+        return $this->apiJson($result);
     }
 
-    /**
-     * @template T of object
-     * @param class-string<T> $dtoClass
-     * @return T|JsonResponse
-     */
+    private function apiJson(array $result): JsonResponse
+    {
+        $status = $result['statusCode'] ?? Response::HTTP_OK;
+        unset($result['statusCode']);
+
+        return $this->json($result, $status);
+    }
+
     private function deserializeAndValidate(Request $request, string $dtoClass): object
     {
         try {
@@ -122,3 +139,4 @@ final class AdminQuestTemplateController extends AbstractController
         return $dto;
     }
 }
+

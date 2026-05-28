@@ -42,7 +42,6 @@ export default function AdminEventsPage() {
       const result = await fetchQuestTemplates();
       setTemplates(result.items || []);
     } catch (_error) {
-      // On laisse l utilisateur continuer, erreur visible au submit.
     } finally {
       setLoadingTemplates(false);
     }
@@ -83,16 +82,7 @@ export default function AdminEventsPage() {
       setLastResponse(result);
       setForm(initialState);
     } catch (err) {
-      const baseMessage = err.payload?.message || err.message || "Creation event impossible";
-      const fieldErrors = err.payload?.errors;
-      if (fieldErrors && typeof fieldErrors === "object") {
-        const details = Object.entries(fieldErrors)
-          .map(([field, msg]) => `${field}: ${msg}`)
-          .join(" | ");
-        setError(`${baseMessage} ${details ? `(${details})` : ""}`.trim());
-      } else {
-        setError(baseMessage);
-      }
+      setError(err.payload?.message || err.message || "Creation event impossible");
     }
   }
 
@@ -248,3 +238,4 @@ export default function AdminEventsPage() {
     </section>
   );
 }
+

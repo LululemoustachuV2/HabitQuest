@@ -22,3 +22,4 @@ final class UserQuestTest extends TestCase
         self::assertNotNull($quest->getCompletedAt());
     }
 }
+

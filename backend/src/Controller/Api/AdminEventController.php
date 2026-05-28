@@ -3,6 +3,7 @@
 namespace App\Controller\Api;
 
 use App\Dto\CreateEventDto;
+use App\Dto\UpdateEventDto;
 use App\Service\EventService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -27,7 +28,6 @@ final class AdminEventController extends AbstractController
     public function create(Request $request): JsonResponse
     {
         try {
-            /** @var CreateEventDto $dto */
             $dto = $this->serializer->deserialize($request->getContent(), CreateEventDto::class, 'json');
         } catch (\Throwable) {
             return $this->json(['message' => 'Corps de requête JSON invalide.'], Response::HTTP_BAD_REQUEST);
@@ -54,4 +54,41 @@ final class AdminEventController extends AbstractController
 
         return $this->json($result, $result['statusCode']);
     }
+
+    #[Route('/api/admin/events/{id}', name: 'api_admin_event_update', methods: ['PUT'], requirements: ['id' => '\d+'])]
+    public function update(int $id, Request $request): JsonResponse
+    {
+        $raw = json_decode($request->getContent(), true);
+        if (!is_array($raw)) {
+            return $this->json(['message' => 'Corps de requête JSON invalide.'], Response::HTTP_BAD_REQUEST);
+        }
+
+        try {
+            $dto = $this->serializer->deserialize($request->getContent(), UpdateEventDto::class, 'json');
+        } catch (\Throwable) {
+            return $this->json(['message' => 'Corps de requête JSON invalide.'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $violations = $this->validator->validate($dto);
+        if (count($violations) > 0) {
+            $errors = [];
+            foreach ($violations as $violation) {
+                $errors[$violation->getPropertyPath()] = $violation->getMessage();
+            }
+
+            return $this->json(['message' => 'Validation échouée.', 'errors' => $errors], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        try {
+            $result = $this->eventService->updateEvent($id, $dto, array_keys($raw));
+        } catch (\Throwable $exception) {
+            return $this->json([
+                'message' => 'Erreur interne lors de la mise à jour de l\'événement.',
+                'error' => $exception->getMessage(),
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+
+        return $this->json($result, $result['statusCode']);
+    }
 }
+

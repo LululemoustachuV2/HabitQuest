@@ -25,6 +25,7 @@ final class QuestTemplateService
         private readonly EventRepository $eventRepository,
         private readonly UserRepository $userRepository,
         private readonly UserQuestRepository $userQuestRepository,
+        private readonly QuestProgressService $questProgressService,
     ) {
     }
 
@@ -44,6 +45,7 @@ final class QuestTemplateService
             ->setIsActive($dto->isActive);
 
         $this->entityManager->persist($template);
+        $this->entityManager->flush();
         $this->assignTemplateToUsersIfNeeded($template);
         $this->entityManager->flush();
 
@@ -213,6 +215,7 @@ final class QuestTemplateService
             'title' => $template->getTitle(),
             'description' => $template->getDescription(),
             'xpReward' => $template->getXpReward(),
+            'baseDamage' => $template->getBaseDamage(),
             'requiredLevel' => $template->getRequiredLevel(),
             'isActive' => $template->isActive(),
         ];
@@ -247,11 +250,16 @@ final class QuestTemplateService
                 continue;
             }
 
-            $this->entityManager->persist(
-                (new UserQuest())
-                    ->setUser($user)
-                    ->setQuestTemplate($template)
-            );
+            $userQuest = (new UserQuest())
+                ->setUser($user)
+                ->setQuestTemplate($template);
+
+            if ($this->questProgressService->templateHasConditions($template)) {
+                $userQuest->setProgress($this->questProgressService->buildInitialProgress($template));
+            }
+
+            $this->entityManager->persist($userQuest);
         }
     }
 }
+

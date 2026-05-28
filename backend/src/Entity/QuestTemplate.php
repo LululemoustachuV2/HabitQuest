@@ -39,6 +39,10 @@ class QuestTemplate
     #[Assert\Positive(message: 'Le niveau requis doit être strictement positif.')]
     private int $requiredLevel = 1;
 
+    #[ORM\Column(type: 'integer', options: ['default' => 15])]
+    #[Assert\PositiveOrZero(message: 'Les dégâts de base doivent être positifs ou nuls.')]
+    private int $baseDamage = 15;
+
     public function getId(): ?int
     {
         return $this->id;
@@ -52,6 +56,7 @@ class QuestTemplate
     public function setKind(QuestKind $kind): self
     {
         $this->kind = $kind;
+        $this->baseDamage = $kind->defaultBaseDamage();
 
         return $this;
     }
@@ -115,4 +120,17 @@ class QuestTemplate
 
         return $this;
     }
+
+    public function getBaseDamage(): int
+    {
+        return $this->baseDamage;
+    }
+
+    public function setBaseDamage(int $baseDamage): self
+    {
+        $this->baseDamage = max(0, $baseDamage);
+
+        return $this;
+    }
 }
+

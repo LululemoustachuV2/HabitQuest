@@ -13,4 +13,24 @@ final class EventTest extends TestCase
 
         self::assertSame(0, $event->getXpReward());
     }
+
+    public function testDefaultMultipliersAreOne(): void
+    {
+        $event = new Event();
+
+        self::assertSame(1.0, $event->getXpMultiplier());
+        self::assertSame(1.0, $event->getGoldMultiplier());
+        self::assertNull($event->getBonusRules());
+    }
+
+    public function testInvalidMultiplierFallsBackToOne(): void
+    {
+        $event = (new Event())
+            ->setXpMultiplier(0.0)
+            ->setGoldMultiplier(-2.0);
+
+        self::assertSame(1.0, $event->getXpMultiplier());
+        self::assertSame(1.0, $event->getGoldMultiplier());
+    }
 }
+

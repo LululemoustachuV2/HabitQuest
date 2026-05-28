@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import MonsterCard from "../components/MonsterCard";
 import {
   fetchMyProgression,
   fetchUserQuests,
@@ -12,13 +13,23 @@ const KIND_LABELS = {
   event: "Event",
 };
 
-const TABS = [
+const STAT_LABELS = {
+  force: "Force",
+  intelligence: "Intelligence",
+  discipline: "Discipline",
+  creativity: "Creativite",
+};
+
+const MAIN_TABS = [
+  { id: "active", label: "Actives" },
+  { id: "completed", label: "Terminees" },
+];
+
+const ACTIVE_KIND_TABS = [
   { id: "daily", label: "Quotidiennes" },
   { id: "weekly", label: "Hebdomadaires" },
-  { id: "progression", label: "Progression" },
-  { id: "eventGlobal", label: "Events globaux" },
-  { id: "completed", label: "Completees" },
-  { id: "expired", label: "Expirees" },
+  { id: "progression", label: "Histoire" },
+  { id: "eventGlobal", label: "Events" },
 ];
 
 function formatRemaining(seconds) {
@@ -72,6 +83,22 @@ function QuestCard({ quest, nowTick, onValidate }) {
           </span>
         )}
 
+        {quest.damagePreview?.estimatedDamage > 0 && quest.status === "in_progress" && (
+          <span className="chip chip--damage" title="Degats estimes sur le boss">
+            ~{quest.damagePreview.estimatedDamage} degats
+          </span>
+        )}
+
+        {(quest.statRewards || []).map((reward) => (
+          <span
+            key={`${quest.id}-${reward.stat}`}
+            className="chip chip--stat"
+            title="Bonus de stat"
+          >
+            +{reward.points} {STAT_LABELS[reward.stat] || reward.stat}
+          </span>
+        ))}
+
         {quest.requiredLevel > 1 && (
           <span className={`chip ${isLocked ? "chip--locked" : "chip--level"}`}>
             Niveau {quest.requiredLevel}
@@ -84,6 +111,22 @@ function QuestCard({ quest, nowTick, onValidate }) {
       </div>
 
       {quest.description && <p className="quest-card-desc">{quest.description}</p>}
+
+      {quest.progress?.target > 0 && (
+        <div className="quest-progress mt-1">
+          <div className="xp-bar" role="progressbar" aria-valuemin={0} aria-valuemax={quest.progress.target} aria-valuenow={quest.progress.current}>
+            <div
+              className="xp-bar-fill"
+              style={{
+                width: `${Math.min(100, Math.round((quest.progress.current / quest.progress.target) * 100))}%`,
+              }}
+            />
+          </div>
+          <p className="quest-card-desc mb-0">
+            Progression : <strong>{quest.progress.current}</strong> / {quest.progress.target}
+          </p>
+        </div>
+      )}
 
       {quest.isEvent && (
         <p className="quest-card-desc">
@@ -105,7 +148,7 @@ function QuestCard({ quest, nowTick, onValidate }) {
         </span>
       )}
 
-      {quest.status === "in_progress" && (
+      {quest.status === "in_progress" && !quest.hasConditions && (
         <div className="quest-card-footer">
           <button
             type="button"
@@ -116,6 +159,10 @@ function QuestCard({ quest, nowTick, onValidate }) {
             {isLocked ? "Niveau insuffisant" : "Valider la quete"}
           </button>
         </div>
+      )}
+
+      {quest.status === "in_progress" && quest.hasConditions && (
+        <p className="quest-card-desc mb-0">Completion automatique lorsque les conditions sont remplies.</p>
       )}
     </article>
   );
@@ -141,17 +188,18 @@ export default function QuestsPage() {
   });
   const [progression, setProgression] = useState(null);
   const [nowTick, setNowTick] = useState(0);
-  const [activeTab, setActiveTab] = useState("daily");
+  const [mainTab, setMainTab] = useState("active");
+  const [activeKindTab, setActiveKindTab] = useState("daily");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [monsterRefresh, setMonsterRefresh] = useState(0);
 
   async function loadProgression() {
     try {
       const result = await fetchMyProgression();
       setProgression(result);
     } catch (_error) {
-      // UI reste fonctionnelle meme sans endpoint progression.
     }
   }
 
@@ -184,9 +232,14 @@ export default function QuestsPage() {
     setError("");
     try {
       const result = await validateQuest(id, "Validation front React MVP");
-      setMessage(result.message || "Quete validee");
+      const damageMsg =
+        typeof result.damageDealt === "number" && result.damageDealt > 0
+          ? ` -${result.damageDealt} degats`
+          : "";
+      setMessage((result.message || "Quete validee") + damageMsg);
       await loadQuests();
       await loadProgression();
+      setMonsterRefresh((value) => value + 1);
     } catch (err) {
       setError(err.payload?.message || err.message || "Validation impossible");
     }
@@ -203,20 +256,31 @@ export default function QuestsPage() {
     return () => window.clearInterval(interval);
   }, []);
 
-  const tabData = useMemo(
+  const isActiveQuest = (quest) => quest.status === "in_progress";
+
+  const activeByKind = useMemo(
     () => ({
-      daily: data.activeByKind.daily || [],
-      weekly: data.activeByKind.weekly || [],
-      progression: data.activeByKind.progression || [],
-      eventGlobal: data.eventQuests || [],
-      completed: data.completed || [],
-      expired: data.expired || [],
+      daily: (data.activeByKind.daily || []).filter(isActiveQuest),
+      weekly: (data.activeByKind.weekly || []).filter(isActiveQuest),
+      progression: (data.activeByKind.progression || []).filter(isActiveQuest),
+      eventGlobal: (data.eventQuests || []).filter(isActiveQuest),
     }),
     [data]
   );
 
-  const currentQuests = tabData[activeTab] || [];
-  const activeTabMeta = TABS.find((tab) => tab.id === activeTab);
+  const completedQuests = useMemo(() => data.completed || [], [data.completed]);
+
+  const currentQuests =
+    mainTab === "completed" ? completedQuests : activeByKind[activeKindTab] || [];
+
+  const activeCount = useMemo(
+    () =>
+      activeByKind.daily.length
+      + activeByKind.weekly.length
+      + activeByKind.progression.length
+      + activeByKind.eventGlobal.length,
+    [activeByKind]
+  );
 
   return (
     <section>
@@ -224,7 +288,7 @@ export default function QuestsPage() {
         <div>
           <h2>Mes quetes</h2>
           <p className="page-header-sub">
-            Pilote tes quetes quotidiennes, hebdomadaires et globales.
+            Accomplis les quetes proposees par l&apos;admin : journalieres, hebdo, histoire et events.
           </p>
         </div>
         <div className="page-actions">
@@ -236,6 +300,8 @@ export default function QuestsPage() {
           </button>
         </div>
       </div>
+
+      <MonsterCard refreshSignal={monsterRefresh} />
 
       {progression && (
         <div className="xp-hero">
@@ -275,7 +341,7 @@ export default function QuestsPage() {
       <div className="stats-row">
         <div className="stat-card">
           <span className="stat-card-label">En cours</span>
-          <span className="stat-card-value">{data.active.length}</span>
+          <span className="stat-card-value">{activeCount}</span>
           <span className="stat-card-hint">quetes actives</span>
         </div>
         <div className="stat-card">
@@ -289,9 +355,9 @@ export default function QuestsPage() {
           <span className="stat-card-hint">quetes d event</span>
         </div>
         <div className="stat-card">
-          <span className="stat-card-label">Expirees</span>
-          <span className="stat-card-value">{data.expired.length}</span>
-          <span className="stat-card-hint">manquees</span>
+          <span className="stat-card-label">Or</span>
+          <span className="stat-card-value">{progression?.gold ?? "—"}</span>
+          <span className="stat-card-hint">bientot boutique</span>
         </div>
       </div>
 
@@ -315,17 +381,17 @@ export default function QuestsPage() {
           </h3>
         </div>
 
-        <div className="tabs" role="tablist" aria-label="Filtrer les quetes">
-          {TABS.map((tab) => {
-            const count = (tabData[tab.id] || []).length;
+        <div className="tabs" role="tablist" aria-label="Vue des quetes">
+          {MAIN_TABS.map((tab) => {
+            const count = tab.id === "active" ? activeCount : completedQuests.length;
             return (
               <button
                 key={tab.id}
                 type="button"
                 role="tab"
-                aria-selected={activeTab === tab.id}
-                className={`tab ${activeTab === tab.id ? "is-active" : ""}`}
-                onClick={() => setActiveTab(tab.id)}
+                aria-selected={mainTab === tab.id}
+                className={`tab ${mainTab === tab.id ? "is-active" : ""}`}
+                onClick={() => setMainTab(tab.id)}
               >
                 {tab.label}
                 <span className="tab-count">{count}</span>
@@ -333,6 +399,27 @@ export default function QuestsPage() {
             );
           })}
         </div>
+
+        {mainTab === "active" && (
+          <div className="tabs tabs--sub mt-1" role="tablist" aria-label="Type de quete">
+            {ACTIVE_KIND_TABS.map((tab) => {
+              const count = (activeByKind[tab.id] || []).length;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeKindTab === tab.id}
+                  className={`tab tab--sub ${activeKindTab === tab.id ? "is-active" : ""}`}
+                  onClick={() => setActiveKindTab(tab.id)}
+                >
+                  {tab.label}
+                  <span className="tab-count">{count}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         <div className="mt-2">
           {loading ? (
@@ -342,7 +429,13 @@ export default function QuestsPage() {
               <div className="skeleton" style={{ height: 140 }} />
             </div>
           ) : currentQuests.length === 0 ? (
-            <EmptyQuests label={activeTabMeta?.label || ""} />
+            <EmptyQuests
+              label={
+                mainTab === "completed"
+                  ? "terminee"
+                  : ACTIVE_KIND_TABS.find((t) => t.id === activeKindTab)?.label || ""
+              }
+            />
           ) : (
             <div className="quest-grid">
               {currentQuests.map((quest) => (
@@ -360,3 +453,4 @@ export default function QuestsPage() {
     </section>
   );
 }
+

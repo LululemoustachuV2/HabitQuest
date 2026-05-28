@@ -8,3 +8,4 @@ enum UserQuestStatus: string
     case COMPLETED = 'completed';
     case EXPIRED = 'expired';
 }
+

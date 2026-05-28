@@ -11,3 +11,4 @@ export default function RoleRoute({ allowedRoles, children }) {
 
   return children;
 }
+

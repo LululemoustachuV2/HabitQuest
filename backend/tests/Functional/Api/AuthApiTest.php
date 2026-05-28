@@ -27,3 +27,4 @@ final class AuthApiTest extends ApiTestCase
         self::assertNotEmpty($payload['token']);
     }
 }
+

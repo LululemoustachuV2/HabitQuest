@@ -50,5 +50,20 @@ Content-Type: application/json
 {
   "startsAt": "2026-04-01T08:00:00+00:00",
   "endsAt": "2026-04-08T08:00:00+00:00",
-  "questTemplateIds": [1, 2]
+  "eventXpReward": 120,
+  "questTemplateIds": [1, 2],
+  "xpMultiplier": 2.0,
+  "goldMultiplier": 1.5,
+  "bonusRules": { "theme": "weekend_x2" }
+}
+
+### Admin update event (PMVP-025)
+PUT http://localhost:8000/api/admin/events/1
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "xpMultiplier": 2.5,
+  "goldMultiplier": 2.0,
+  "bonusRules": { "label": "updated" }
 }

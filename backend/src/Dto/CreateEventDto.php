@@ -28,4 +28,14 @@ final class CreateEventDto
     #[Assert\NotNull(message: 'La récompense XP de l\'événement est obligatoire.')]
     #[Assert\PositiveOrZero(message: 'La récompense XP doit être positive ou nulle.')]
     public ?int $eventXpReward = null;
+
+    #[Assert\Positive(message: 'Le multiplicateur XP doit être strictement positif.')]
+    public ?float $xpMultiplier = null;
+
+    #[Assert\Positive(message: 'Le multiplicateur gold doit être strictement positif.')]
+    public ?float $goldMultiplier = null;
+
+    #[Assert\Type('array')]
+    public ?array $bonusRules = null;
 }
+

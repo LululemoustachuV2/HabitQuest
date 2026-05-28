@@ -35,3 +35,4 @@ final class ProgressionQuestApiTest extends ApiTestCase
         self::assertStringContainsString('Niveau insuffisant', (string) ($payload['message'] ?? ''));
     }
 }
+

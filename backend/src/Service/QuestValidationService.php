@@ -4,13 +4,18 @@ namespace App\Service;
 
 use App\Entity\Event;
 use App\Entity\Notification;
+use App\Entity\QuestReward;
+use App\Entity\QuestTemplate;
 use App\Entity\User;
+use App\Entity\UserMonster;
 use App\Entity\UserQuest;
 use App\Entity\UserQuestActionLog;
 use App\Enum\QuestKind;
 use App\Enum\UserQuestStatus;
 use App\Repository\EventRepository;
 use App\Repository\NotificationRepository;
+use App\Repository\QuestConditionRepository;
+use App\Repository\QuestRewardRepository;
 use App\Repository\UserQuestRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\SecurityBundle\Security;
@@ -24,12 +29,29 @@ final class QuestValidationService
         private readonly UserQuestRepository $userQuestRepository,
         private readonly EventRepository $eventRepository,
         private readonly NotificationRepository $notificationRepository,
+        private readonly QuestRewardRepository $questRewardRepository,
+        private readonly QuestConditionRepository $questConditionRepository,
+        private readonly InventoryService $inventoryService,
+        private readonly EventMultiplierService $eventMultiplierService,
+        private readonly LevelService $levelService,
+        private readonly StatService $statService,
+        private readonly UserMonsterService $userMonsterService,
+        private readonly CombatService $combatService,
+        private readonly MonsterService $monsterService,
+        private readonly AchievementService $achievementService,
     ) {
     }
 
-    /**
-     * Règle MVP : validation simple, une seule attribution de récompense par quête.
-     */
+    public function completeQuestAfterConditions(User $user, UserQuest $userQuest, string $comment): void
+    {
+        if ($userQuest->getStatus() === UserQuestStatus::COMPLETED) {
+            return;
+        }
+
+        $this->applyQuestCompletion($user, $userQuest, $comment);
+        $this->entityManager->flush();
+    }
+
     public function validateQuestForCurrentUser(int $userQuestId, string $comment): array
     {
         if ($userQuestId <= 0) {
@@ -76,7 +98,15 @@ final class QuestValidationService
             ];
         }
 
-        if ($userQuest->getQuestTemplate()->getKind() === QuestKind::PROGRESSION) {
+        $template = $userQuest->getQuestTemplate();
+        if ($this->questConditionRepository->count(['questTemplate' => $template]) > 0) {
+            return [
+                'statusCode' => Response::HTTP_UNPROCESSABLE_ENTITY,
+                'message' => 'Cette quête se complète automatiquement lorsque ses conditions sont remplies.',
+            ];
+        }
+
+        if ($template->getKind() === QuestKind::PROGRESSION) {
             $levelData = $this->computeLevelData($currentUser->getXp());
             if ($levelData['level'] < $userQuest->getQuestTemplate()->getRequiredLevel()) {
                 return [
@@ -90,39 +120,164 @@ final class QuestValidationService
             }
         }
 
+        $completion = $this->applyQuestCompletion($currentUser, $userQuest, $comment);
+        $this->entityManager->flush();
+
+        $response = [
+            'statusCode' => Response::HTTP_OK,
+            'message' => 'Quête validée.',
+            'userQuestId' => $userQuestId,
+            'comment' => $comment,
+            'xpAwarded' => $completion['xpReward'],
+            'goldAwarded' => $completion['goldReward'],
+        ];
+
+        if ($completion['itemGranted'] !== null) {
+            $response['itemGranted'] = $completion['itemGranted'];
+        }
+        if ($completion['leveledUp']) {
+            $response['leveledUp'] = true;
+            $response['newLevel'] = $completion['newLevel'];
+        }
+        if ($completion['statRewardsGranted'] !== []) {
+            $response['statRewardsGranted'] = $completion['statRewardsGranted'];
+        }
+
+        $response['damageDealt'] = $completion['damageDealt'];
+        $response['monsterDied'] = $completion['monsterDied'];
+        if ($completion['loot'] !== null) {
+            $response['loot'] = $completion['loot'];
+        }
+
+        return $response;
+    }
+
+    private function applyQuestCompletion(User $user, UserQuest $userQuest, string $comment): array
+    {
         $isEventQuest = $userQuest->getEvent() instanceof Event;
-        $xpReward = $isEventQuest ? 0 : $userQuest->getQuestTemplate()->getXpReward();
+        $template = $userQuest->getQuestTemplate();
+        $composedReward = $this->questRewardRepository->findOneByQuestTemplate($template);
+        $previousXp = $user->getXp();
+
+        $xpReward = 0;
+        $goldReward = 0;
+        $itemGranted = null;
+        $statRewardsGranted = [];
+
+        if ($isEventQuest) {
+        } elseif ($composedReward instanceof QuestReward) {
+            $xpReward = $composedReward->getXp();
+            $goldReward = $composedReward->getGold();
+        } else {
+            $xpReward = $template->getXpReward();
+        }
+
         $userQuest->markCompleted();
-        $currentUser->addXp($xpReward);
+
+        if (!$isEventQuest) {
+            $xpReward = $this->eventMultiplierService->applyXp($xpReward);
+            $goldReward = $this->eventMultiplierService->applyGold($goldReward);
+        }
+
+        $combat = $this->applyQuestCombat($user, $template);
+
+        if ($xpReward > 0) {
+            $user->addXp($xpReward);
+        }
+        if ($goldReward > 0) {
+            $user->addGold($goldReward);
+        }
+        if ($composedReward instanceof QuestReward && $composedReward->getItem() !== null) {
+            $inventoryEntry = $this->inventoryService->grantItem(
+                $user,
+                $composedReward->getItem(),
+                flush: false
+            );
+            $itemGranted = [
+                'inventoryId' => $inventoryEntry->getId(),
+                'itemId' => $composedReward->getItem()->getId(),
+                'itemName' => $composedReward->getItem()->getName(),
+            ];
+        }
+
+        if ($composedReward instanceof QuestReward && !$isEventQuest) {
+            $statRewardsGranted = QuestRewardStatHelper::formatForApi($composedReward->getParams());
+            QuestRewardStatHelper::applyStatBonuses($user, $composedReward->getParams(), $this->statService);
+        }
+
+        $levelInfo = $this->levelService->checkLevelUp($user, $previousXp);
+        if ($levelInfo['leveledUp']) {
+            $this->statService->grantLevelUpBonuses(
+                $user,
+                $levelInfo['oldLevel'],
+                $levelInfo['newLevel'],
+                flush: false
+            );
+        }
 
         $log = (new UserQuestActionLog())
-            ->setUser($currentUser)
+            ->setUser($user)
             ->setUserQuest($userQuest)
             ->setComment($comment);
 
         $notification = (new Notification())
-            ->setUser($currentUser)
+            ->setUser($user)
             ->setTitle('Quête complétée')
             ->setBody(
                 $isEventQuest
                     ? sprintf(
                         'Tu as validé « %s ». Les XP de cet événement te seront attribués à sa clôture.',
-                        $userQuest->getQuestTemplate()->getTitle()
+                        $template->getTitle()
                     )
-                    : sprintf('Tu as validé « %s » et gagné %d XP.', $userQuest->getQuestTemplate()->getTitle(), $xpReward)
+                    : $this->buildCompletionNotificationBody($template->getTitle(), $xpReward, $goldReward, $itemGranted)
             );
 
         $this->entityManager->persist($log);
         $this->entityManager->persist($notification);
-        $this->settleEndedEventRewards($currentUser);
-        $this->entityManager->flush();
+        $this->settleEndedEventRewards($user);
+        $this->achievementService->checkAfterQuestValidated($user);
 
         return [
-            'statusCode' => Response::HTTP_OK,
-            'message' => 'Quête validée.',
-            'userQuestId' => $userQuestId,
-            'comment' => $comment,
-            'xpAwarded' => $xpReward,
+            'xpReward' => $xpReward,
+            'goldReward' => $goldReward,
+            'itemGranted' => $itemGranted,
+            'leveledUp' => $levelInfo['leveledUp'],
+            'newLevel' => $levelInfo['newLevel'],
+            'statRewardsGranted' => $statRewardsGranted,
+            'damageDealt' => $combat['damageDealt'],
+            'monsterDied' => $combat['monsterDied'],
+            'loot' => $combat['loot'],
+        ];
+    }
+
+    private function applyQuestCombat(User $user, QuestTemplate $template): array
+    {
+        try {
+            $monster = $this->userMonsterService->getOrSpawnActiveMonster($user);
+        } catch (\RuntimeException) {
+            return [
+                'damageDealt' => 0,
+                'monsterDied' => false,
+                'loot' => null,
+            ];
+        }
+
+        $combatResult = $this->combatService->applyDamageFromQuestBase(
+            $user,
+            $monster,
+            $template->getBaseDamage()
+        );
+
+        $loot = null;
+        if ($combatResult['monsterDied']) {
+            $deathResult = $this->monsterService->onMonsterDeath($user, $monster);
+            $loot = $deathResult['loot'];
+        }
+
+        return [
+            'damageDealt' => $combatResult['damage'],
+            'monsterDied' => $combatResult['monsterDied'],
+            'loot' => $loot,
         ];
     }
 
@@ -203,6 +358,35 @@ final class QuestValidationService
         return $existing instanceof Notification;
     }
 
+    private function buildCompletionNotificationBody(
+        string $title,
+        int $xpReward,
+        int $goldReward,
+        ?array $itemGranted,
+    ): string {
+        $parts = [sprintf('Tu as validé « %s »', $title)];
+
+        if ($xpReward > 0) {
+            $parts[] = sprintf('%d XP', $xpReward);
+        }
+        if ($goldReward > 0) {
+            $parts[] = sprintf('%d gold', $goldReward);
+        }
+        if ($itemGranted !== null) {
+            $parts[] = sprintf('l\'item « %s »', $itemGranted['itemName']);
+        }
+
+        if (count($parts) === 1) {
+            return $parts[0].'.';
+        }
+
+        $rewards = array_slice($parts, 1);
+        $last = array_pop($rewards);
+        $rewardText = $rewards === [] ? $last : implode(', ', $rewards).' et '.$last;
+
+        return $parts[0].' et gagné '.$rewardText.'.';
+    }
+
     private function computeLevelData(int $xp): array
     {
         $remainingXp = max(0, $xp);
@@ -222,3 +406,4 @@ final class QuestValidationService
         ];
     }
 }
+

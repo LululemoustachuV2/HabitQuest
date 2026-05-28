@@ -3,6 +3,7 @@
 namespace App\Repository;
 
 use App\Entity\Event;
+use App\Entity\QuestCondition;
 use App\Entity\QuestTemplate;
 use App\Entity\User;
 use App\Entity\UserQuest;
@@ -10,9 +11,6 @@ use App\Enum\UserQuestStatus;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 
-/**
- * @extends ServiceEntityRepository<UserQuest>
- */
 class UserQuestRepository extends ServiceEntityRepository
 {
     public function __construct(ManagerRegistry $registry)
@@ -20,9 +18,6 @@ class UserQuestRepository extends ServiceEntityRepository
         parent::__construct($registry, UserQuest::class);
     }
 
-    /**
-     * @return UserQuest[]
-     */
     public function findAllForUser(User $user): array
     {
         return $this->createQueryBuilder('uq')
@@ -50,9 +45,6 @@ class UserQuestRepository extends ServiceEntityRepository
         return $qb->getQuery()->getOneOrNullResult();
     }
 
-    /**
-     * @return UserQuest[]
-     */
     public function findInProgressByKindForUser(User $user, string $kind): array
     {
         return $this->createQueryBuilder('uq')
@@ -66,4 +58,31 @@ class UserQuestRepository extends ServiceEntityRepository
             ->getQuery()
             ->getResult();
     }
+
+    public function countValidatedForUser(User $user): int
+    {
+        return (int) $this->createQueryBuilder('uq')
+            ->select('COUNT(uq.id)')
+            ->andWhere('uq.user = :user')
+            ->andWhere('uq.status = :status')
+            ->setParameter('user', $user)
+            ->setParameter('status', UserQuestStatus::COMPLETED)
+            ->getQuery()
+            ->getSingleScalarResult();
+    }
+
+    public function findInProgressWithConditionsForUser(User $user): array
+    {
+        return $this->createQueryBuilder('uq')
+            ->innerJoin('uq.questTemplate', 't')
+            ->innerJoin(QuestCondition::class, 'qc', 'WITH', 'qc.questTemplate = t')
+            ->andWhere('uq.user = :user')
+            ->andWhere('uq.status = :status')
+            ->setParameter('user', $user)
+            ->setParameter('status', UserQuestStatus::IN_PROGRESS)
+            ->orderBy('uq.id', 'ASC')
+            ->getQuery()
+            ->getResult();
+    }
 }
+

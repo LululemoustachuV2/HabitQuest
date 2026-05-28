@@ -7,9 +7,17 @@ use App\Entity\User;
 use App\Entity\UserQuest;
 use App\Enum\QuestKind;
 use App\Enum\UserQuestStatus;
+use App\Entity\QuestReward;
+use App\Repository\QuestRewardRepository;
 use App\Repository\QuestTemplateRepository;
 use App\Repository\UserQuestRepository;
+use App\Service\DamagePreviewService;
+use App\Service\QuestExpiryService;
+use App\Service\QuestProgressService;
+use App\Service\QuestRewardStatHelper;
 use App\Service\QuestValidationService;
+use App\Service\RecurringQuestResetService;
+use App\Service\UserMonsterService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -23,21 +31,27 @@ final class UserQuestController extends AbstractController
 {
     public function __construct(
         private readonly QuestValidationService $questValidationService,
+        private readonly QuestProgressService $questProgressService,
         private readonly QuestTemplateRepository $questTemplateRepository,
+        private readonly QuestRewardRepository $questRewardRepository,
         private readonly UserQuestRepository $userQuestRepository,
+        private readonly QuestExpiryService $questExpiryService,
+        private readonly RecurringQuestResetService $recurringQuestResetService,
         private readonly EntityManagerInterface $entityManager,
+        private readonly DamagePreviewService $damagePreviewService,
+        private readonly UserMonsterService $userMonsterService,
     ) {
     }
 
     #[Route('/api/quests', name: 'api_user_quests_list', methods: ['GET'])]
     public function list(): JsonResponse
     {
-        /** @var User $user */
         $user = $this->getUser();
 
         $this->questValidationService->settleEndedEventRewards($user);
-        $this->resetRecurringQuests($user);
+        $this->recurringQuestResetService->resetForUser($user);
         $this->syncMissingStandardQuestsForUser($user);
+        $this->questExpiryService->expireInProgressQuestsForUser($user);
         $this->entityManager->flush();
 
         $currentLevel = $this->computeLevelData($user->getXp())['level'];
@@ -57,33 +71,48 @@ final class UserQuestController extends AbstractController
         ];
 
         foreach ($quests as $quest) {
+            $template = $quest->getQuestTemplate();
             $eventEndsAt = $quest->getEvent()?->getEndsAt();
             $timing = $this->buildQuestTiming($quest, $eventEndsAt);
+            $hasConditions = $this->questProgressService->templateHasConditions($template);
+            $composedReward = $this->questRewardRepository->findOneByQuestTemplate($template);
+            $statRewards = $composedReward instanceof QuestReward
+                ? QuestRewardStatHelper::formatForApi($composedReward->getParams())
+                : [];
+
+            if ($quest->getStatus() === UserQuestStatus::EXPIRED) {
+                continue;
+            }
+
             $item = [
                 'id' => $quest->getId(),
-                'title' => $quest->getQuestTemplate()->getTitle(),
-                'description' => $quest->getQuestTemplate()->getDescription(),
-                'kind' => $quest->getQuestTemplate()->getKind()->value,
-                'xpReward' => $quest->getQuestTemplate()->getXpReward(),
-                'requiredLevel' => $quest->getQuestTemplate()->getRequiredLevel(),
-                'isUnlocked' => $currentLevel >= $quest->getQuestTemplate()->getRequiredLevel(),
+                'title' => $template->getTitle(),
+                'description' => $template->getDescription(),
+                'kind' => $template->getKind()->value,
+                'xpReward' => $composedReward instanceof QuestReward && $quest->getEvent() === null
+                    ? $composedReward->getXp()
+                    : $template->getXpReward(),
+                'statRewards' => $statRewards,
+                'requiredLevel' => $template->getRequiredLevel(),
+                'isUnlocked' => $currentLevel >= $template->getRequiredLevel(),
                 'isEvent' => $quest->getEvent() !== null,
                 'eventId' => $quest->getEvent()?->getId(),
                 'eventEndsAt' => $eventEndsAt?->format(\DateTimeInterface::ATOM),
                 'eventXpReward' => $quest->getEvent()?->getXpReward(),
                 'status' => $quest->getStatus()->value,
                 'isValidated' => $quest->isValidated(),
+                'hasConditions' => $hasConditions,
+                'progress' => $this->questProgressService->formatProgressForApi($quest->getProgress(), $hasConditions),
                 'timing' => $quest->getStatus() === UserQuestStatus::IN_PROGRESS ? $timing : [
                     'resetType' => 'none',
                     'endsAt' => null,
                     'remainingSeconds' => null,
                 ],
+                'damagePreview' => $this->buildDamagePreview($user, $quest),
             ];
 
             if ($quest->getStatus() === UserQuestStatus::COMPLETED) {
                 $response['completed'][] = $item;
-            } elseif ($quest->getStatus() === UserQuestStatus::EXPIRED) {
-                $response['expired'][] = $item;
             } else {
                 $response['active'][] = $item;
                 if (!($item['kind'] === 'event' && $item['isEvent'] === true)) {
@@ -115,13 +144,17 @@ final class UserQuestController extends AbstractController
 
         $result = $this->questValidationService->validateQuestForCurrentUser($id, $comment);
 
+        if (($result['statusCode'] ?? 0) === Response::HTTP_OK) {
+            $user = $this->getUser();
+            $this->questProgressService->updateQuestsAfterQuestValidation($user);
+        }
+
         return $this->json($result, $result['statusCode']);
     }
 
     #[Route('/api/me/progression', name: 'api_user_progression', methods: ['GET'])]
     public function progression(): JsonResponse
     {
-        /** @var User $user */
         $user = $this->getUser();
 
         $this->questValidationService->settleEndedEventRewards($user);
@@ -132,55 +165,13 @@ final class UserQuestController extends AbstractController
 
         return $this->json([
             'xp' => $xp,
+            'gold' => $user->getGold(),
             'level' => $levelData['level'],
             'xpIntoLevel' => $levelData['xpIntoLevel'],
             'xpRequiredForNextLevel' => $levelData['xpRequiredForNextLevel'],
             'xpToNextLevel' => $levelData['xpToNextLevel'],
             'progressPercent' => $levelData['progressPercent'],
         ]);
-    }
-
-    /**
-     * Réinitialise les quêtes quotidiennes/hebdomadaires terminées si la période
-     * de reset (minuit Europe/Paris / lundi minuit) est passée depuis la complétion.
-     */
-    private function resetRecurringQuests(User $user): void
-    {
-        $nowParis = new \DateTimeImmutable('now', new \DateTimeZone('Europe/Paris'));
-
-        $quests = $this->userQuestRepository->findAllForUser($user);
-        foreach ($quests as $quest) {
-            if ($quest->getStatus() !== UserQuestStatus::COMPLETED) {
-                continue;
-            }
-            if ($quest->getEvent() !== null) {
-                continue;
-            }
-
-            $kind = $quest->getQuestTemplate()->getKind();
-            $completedAt = $quest->getCompletedAt();
-            if (!$completedAt instanceof \DateTimeImmutable) {
-                continue;
-            }
-            $completedAtParis = $completedAt->setTimezone(new \DateTimeZone('Europe/Paris'));
-
-            if ($kind === QuestKind::DAILY) {
-                $nextReset = $completedAtParis->setTime(0, 0)->modify('+1 day');
-                if ($nowParis >= $nextReset) {
-                    $this->entityManager->remove($quest);
-                }
-            } elseif ($kind === QuestKind::WEEKLY) {
-                $dayOfWeek = (int) $completedAtParis->format('N');
-                $daysUntilMonday = 8 - $dayOfWeek;
-                if ($daysUntilMonday === 7) {
-                    $daysUntilMonday = 7;
-                }
-                $nextReset = $completedAtParis->setTime(0, 0)->modify("+{$daysUntilMonday} days");
-                if ($nowParis >= $nextReset) {
-                    $this->entityManager->remove($quest);
-                }
-            }
-        }
     }
 
     private function buildQuestTiming(UserQuest $quest, ?\DateTimeImmutable $eventEndsAt): array
@@ -230,6 +221,25 @@ final class UserQuestController extends AbstractController
         ];
     }
 
+    private function buildDamagePreview(User $user, UserQuest $quest): ?array
+    {
+        if ($quest->getStatus() !== UserQuestStatus::IN_PROGRESS) {
+            return null;
+        }
+
+        try {
+            $monster = $this->userMonsterService->getOrSpawnActiveMonster($user);
+        } catch (\RuntimeException) {
+            return null;
+        }
+
+        return $this->damagePreviewService->preview(
+            $user,
+            $monster,
+            $quest->getQuestTemplate()->getBaseDamage()
+        );
+    }
+
     private function computeLevelData(int $xp): array
     {
         $remainingXp = max(0, $xp);
@@ -269,11 +279,16 @@ final class UserQuestController extends AbstractController
                 continue;
             }
 
-            $this->entityManager->persist(
-                (new UserQuest())
-                    ->setUser($user)
-                    ->setQuestTemplate($template)
-            );
+            $userQuest = (new UserQuest())
+                ->setUser($user)
+                ->setQuestTemplate($template);
+
+            if ($this->questProgressService->templateHasConditions($template)) {
+                $userQuest->setProgress($this->questProgressService->buildInitialProgress($template));
+            }
+
+            $this->entityManager->persist($userQuest);
         }
     }
 }
+

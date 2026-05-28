@@ -3,6 +3,7 @@
 namespace App\Service;
 
 use App\Dto\CreateEventDto;
+use App\Dto\UpdateEventDto;
 use App\Entity\Event;
 use App\Entity\EventQuestSelection;
 use App\Entity\Notification;
@@ -11,6 +12,7 @@ use App\Entity\User;
 use App\Entity\UserQuest;
 use App\Enum\QuestKind;
 use App\Enum\UserRole;
+use App\Repository\EventRepository;
 use App\Repository\QuestTemplateRepository;
 use App\Repository\UserQuestRepository;
 use App\Repository\UserRepository;
@@ -23,15 +25,13 @@ final class EventService
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly Security $security,
+        private readonly EventRepository $eventRepository,
         private readonly QuestTemplateRepository $questTemplateRepository,
         private readonly UserRepository $userRepository,
         private readonly UserQuestRepository $userQuestRepository,
     ) {
     }
 
-    /**
-     * MVP : uniquement des événements globaux (diffusés à tous les utilisateurs).
-     */
     public function createEventAndAssignQuests(CreateEventDto $dto): array
     {
         $currentUser = $this->security->getUser();
@@ -56,7 +56,10 @@ final class EventService
             ->setCreatedBy($currentUser)
             ->setStartsAt($startsAt)
             ->setEndsAt($endsAt)
-            ->setXpReward((int) $dto->eventXpReward);
+            ->setXpReward((int) $dto->eventXpReward)
+            ->setXpMultiplier($dto->xpMultiplier ?? 1.0)
+            ->setGoldMultiplier($dto->goldMultiplier ?? 1.0)
+            ->setBonusRules($dto->bonusRules);
 
         $this->entityManager->persist($event);
 
@@ -96,8 +99,6 @@ final class EventService
         $users = $this->userRepository->findBy(['role' => UserRole::USER]);
         foreach ($users as $user) {
             foreach ($templates as $template) {
-                // Nouvel event : pas de doublon possible, on persiste directement.
-                // (Un appel à findOneForUserAndTemplate ici planterait car $event n'est pas encore flushé.)
                 $this->entityManager->persist(
                     (new UserQuest())
                         ->setUser($user)
@@ -119,14 +120,75 @@ final class EventService
         return [
             'statusCode' => Response::HTTP_CREATED,
             'message' => 'Événement créé.',
-            'event' => [
-                'id' => $event->getId(),
-                'startsAt' => $startsAt->format(\DateTimeInterface::ATOM),
-                'endsAt' => $endsAt->format(\DateTimeInterface::ATOM),
-                'eventXpReward' => (int) $dto->eventXpReward,
-                'questTemplateIds' => $dto->questTemplateIds,
-                'assignedUsersCount' => count($users),
-            ],
+            'event' => $this->serializeEvent($event, $dto->questTemplateIds, count($users)),
         ];
     }
+
+    public function updateEvent(int $eventId, UpdateEventDto $dto, array $presentKeys): array
+    {
+        $event = $this->eventRepository->find($eventId);
+        if (!$event instanceof Event) {
+            return [
+                'statusCode' => Response::HTTP_NOT_FOUND,
+                'message' => 'Événement introuvable.',
+            ];
+        }
+
+        if (in_array('startsAt', $presentKeys, true) && $dto->startsAt !== null) {
+            $event->setStartsAt(new \DateTimeImmutable($dto->startsAt));
+        }
+        if (in_array('endsAt', $presentKeys, true) && $dto->endsAt !== null) {
+            $event->setEndsAt(new \DateTimeImmutable($dto->endsAt));
+        }
+        if (in_array('eventXpReward', $presentKeys, true) && $dto->eventXpReward !== null) {
+            $event->setXpReward($dto->eventXpReward);
+        }
+        if (in_array('xpMultiplier', $presentKeys, true) && $dto->xpMultiplier !== null) {
+            $event->setXpMultiplier($dto->xpMultiplier);
+        }
+        if (in_array('goldMultiplier', $presentKeys, true) && $dto->goldMultiplier !== null) {
+            $event->setGoldMultiplier($dto->goldMultiplier);
+        }
+        if (in_array('bonusRules', $presentKeys, true)) {
+            $event->setBonusRules($dto->bonusRules);
+        }
+
+        if ($event->getEndsAt() <= $event->getStartsAt()) {
+            return [
+                'statusCode' => Response::HTTP_UNPROCESSABLE_ENTITY,
+                'message' => 'La date de fin doit être strictement postérieure à la date de début.',
+            ];
+        }
+
+        $this->entityManager->flush();
+
+        return [
+            'statusCode' => Response::HTTP_OK,
+            'message' => 'Événement mis à jour.',
+            'event' => $this->serializeEvent($event),
+        ];
+    }
+
+    private function serializeEvent(Event $event, ?array $questTemplateIds = null, ?int $assignedUsersCount = null): array
+    {
+        $payload = [
+            'id' => $event->getId(),
+            'startsAt' => $event->getStartsAt()->format(\DateTimeInterface::ATOM),
+            'endsAt' => $event->getEndsAt()->format(\DateTimeInterface::ATOM),
+            'eventXpReward' => $event->getXpReward(),
+            'xpMultiplier' => $event->getXpMultiplier(),
+            'goldMultiplier' => $event->getGoldMultiplier(),
+            'bonusRules' => $event->getBonusRules(),
+        ];
+
+        if ($questTemplateIds !== null) {
+            $payload['questTemplateIds'] = $questTemplateIds;
+        }
+        if ($assignedUsersCount !== null) {
+            $payload['assignedUsersCount'] = $assignedUsersCount;
+        }
+
+        return $payload;
+    }
 }
+

@@ -9,3 +9,4 @@ export async function markNotificationAsRead(notificationId) {
     method: "POST",
   });
 }
+

@@ -40,3 +40,4 @@ export function readStoredUser() {
 export function readStoredToken() {
   return window.localStorage.getItem(STORAGE_KEYS.token);
 }
+

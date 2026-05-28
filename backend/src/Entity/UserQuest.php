@@ -40,6 +40,9 @@ class UserQuest
     #[ORM\Column(type: 'datetime_immutable', nullable: true)]
     private ?\DateTimeImmutable $completedAt = null;
 
+    #[ORM\Column(type: 'json', options: ['default' => '{}'])]
+    private array $progress = [];
+
     public function __construct()
     {
         $this->startedAt = new \DateTimeImmutable();
@@ -135,4 +138,17 @@ class UserQuest
     {
         return $this->completedAt;
     }
+
+    public function getProgress(): array
+    {
+        return $this->progress;
+    }
+
+    public function setProgress(array $progress): self
+    {
+        $this->progress = $progress;
+
+        return $this;
+    }
 }
+

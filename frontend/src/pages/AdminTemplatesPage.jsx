@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import QuestConditionEditor from "../components/QuestConditionEditor";
+import QuestRewardEditor from "../components/QuestRewardEditor";
 import {
   createQuestTemplate,
   deleteQuestTemplate,
@@ -140,7 +142,8 @@ export default function AdminTemplatesPage() {
         <div>
           <h2>Admin - Templates de quetes</h2>
           <p className="page-header-sub">
-            Cree, modifie et active les modeles de quetes proposes aux joueurs.
+            Cree, modifie et active les modeles de quetes. En edition, configurez
+            conditions et recompenses composees (post-MVP).
           </p>
         </div>
         <div className="page-actions">
@@ -269,6 +272,21 @@ export default function AdminTemplatesPage() {
         </form>
       </div>
 
+      {editingTemplateId && (
+        <div className="quest-advanced-stack">
+          <QuestConditionEditor
+            templateId={editingTemplateId}
+            onError={setError}
+            onMessage={setMessage}
+          />
+          <QuestRewardEditor
+            templateId={editingTemplateId}
+            onError={setError}
+            onMessage={setMessage}
+          />
+        </div>
+      )}
+
       <div className="surface">
         <h3 className="section-title">Liste des templates</h3>
 
@@ -345,3 +363,4 @@ export default function AdminTemplatesPage() {
     </section>
   );
 }
+

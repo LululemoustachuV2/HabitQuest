@@ -2,6 +2,7 @@
 
 namespace App\Entity;
 
+use App\Enum\NotificationSeverity;
 use App\Repository\NotificationRepository;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -29,6 +30,12 @@ class Notification
 
     #[ORM\Column(type: 'datetime_immutable', nullable: true)]
     private ?\DateTimeImmutable $readAt = null;
+
+    #[ORM\Column(type: 'string', length: 10, enumType: NotificationSeverity::class)]
+    private NotificationSeverity $severity = NotificationSeverity::INFO;
+
+    #[ORM\Column(name: 'is_fullscreen', type: 'boolean')]
+    private bool $isFullscreen = false;
 
     public function __construct()
     {
@@ -92,4 +99,29 @@ class Notification
     {
         return $this->readAt;
     }
+
+    public function getSeverity(): NotificationSeverity
+    {
+        return $this->severity;
+    }
+
+    public function setSeverity(NotificationSeverity $severity): self
+    {
+        $this->severity = $severity;
+
+        return $this;
+    }
+
+    public function isFullscreen(): bool
+    {
+        return $this->isFullscreen;
+    }
+
+    public function setIsFullscreen(bool $isFullscreen): self
+    {
+        $this->isFullscreen = $isFullscreen;
+
+        return $this;
+    }
 }
+

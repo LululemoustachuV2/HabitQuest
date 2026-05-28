@@ -14,3 +14,4 @@ export async function validateQuest(userQuestId, comment) {
 export async function fetchMyProgression() {
   return httpRequest("/api/me/progression");
 }
+

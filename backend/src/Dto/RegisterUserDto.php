@@ -15,3 +15,4 @@ final class RegisterUserDto
     #[Assert\Length(min: 8, max: 4096, minMessage: 'Le mot de passe doit contenir au moins {{ limit }} caractères.')]
     public ?string $password = null;
 }
+

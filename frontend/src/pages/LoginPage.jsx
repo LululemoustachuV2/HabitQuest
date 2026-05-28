@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { loginUser } from "../services/authService";
 import { useAuth } from "../state/AuthContext";
 import { readJwtPayload } from "../utils/jwt";
+import { APP_NAME, APP_VERSION } from "../config/env";
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -24,7 +25,7 @@ export default function LoginPage() {
       const result = await loginUser({ email, password });
       const payload = readJwtPayload(result.token);
       const rolesFromToken = Array.isArray(payload?.roles) ? payload.roles : [];
-      login(result.token, { email, roles: rolesFromToken });
+      login(result.token, { email, roles: rolesFromToken }, { reconnect: true });
       navigate(redirectTo, { replace: true });
     } catch (err) {
       setError(err.payload?.message || err.message || "Connexion impossible");
@@ -40,7 +41,9 @@ export default function LoginPage() {
           <div className="brand-mark" aria-hidden="true">HQ</div>
           <div>
             <h1 className="auth-card-title">Bon retour, aventurier</h1>
-            <p className="auth-card-sub">Connecte-toi pour poursuivre tes quetes.</p>
+            <p className="auth-card-sub">
+              {APP_NAME} v{APP_VERSION} — Connecte-toi pour poursuivre tes quetes.
+            </p>
           </div>
         </div>
 
@@ -88,3 +91,4 @@ export default function LoginPage() {
     </div>
   );
 }
+

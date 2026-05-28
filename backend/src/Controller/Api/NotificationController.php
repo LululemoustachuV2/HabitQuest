@@ -24,7 +24,6 @@ final class NotificationController extends AbstractController
     #[Route('/api/notifications', name: 'api_notifications_list', methods: ['GET'])]
     public function list(): JsonResponse
     {
-        /** @var User $user */
         $user = $this->getUser();
 
         $notifications = $this->notificationRepository->findRecentForUser($user);
@@ -34,6 +33,8 @@ final class NotificationController extends AbstractController
                 'id' => $notification->getId(),
                 'title' => $notification->getTitle(),
                 'body' => $notification->getBody(),
+                'severity' => $notification->getSeverity()->value,
+                'isFullscreen' => $notification->isFullscreen(),
                 'createdAt' => $notification->getCreatedAt()->format(\DateTimeInterface::ATOM),
                 'readAt' => $notification->getReadAt()?->format(\DateTimeInterface::ATOM),
             ],
@@ -46,7 +47,6 @@ final class NotificationController extends AbstractController
     #[Route('/api/notifications/{id}/read', name: 'api_notifications_read', methods: ['POST'], requirements: ['id' => '\d+'])]
     public function markAsRead(int $id): JsonResponse
     {
-        /** @var User $user */
         $user = $this->getUser();
 
         $notification = $this->notificationRepository->find($id);
@@ -64,3 +64,4 @@ final class NotificationController extends AbstractController
         return $this->json(['message' => 'Notification marquée comme lue.']);
     }
 }
+

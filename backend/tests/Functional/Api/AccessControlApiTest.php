@@ -23,3 +23,4 @@ final class AccessControlApiTest extends ApiTestCase
         self::assertResponseStatusCodeSame(403);
     }
 }
+
